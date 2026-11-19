@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Two Dragons — logic tests</title>
+  <style>
+    body { font: 15px/1.5 system-ui, sans-serif; margin: 24px; background: #fbf8f1; color: #1c2023; }
+    h1 { font-size: 22px; }
+    li.pass::marker { content: "✔  "; color: #2b7a68; }
+    li.fail { color: #c23a2a; }
+    li.fail::marker { content: "✘  "; }
+    #summary.ok { color: #2b7a68; }
+    #summary.ko { color: #c23a2a; }
+  </style>
+</head>
+<body>
+  <h1 id="summary">Running…</h1>
+  <ol id="results"></ol>
+  <script src="../js/logic.js"></script>
+  <script>
+    // Validation criteria from rules.md, checked against the pure logic module.
+    const L = window.TwoDragonsLogic;
+    const results = [];
+    const xFirst = () => 0.1; // rng < 0.5 → X begins
+    const oFirst = () => 0.9;
+
+    function test(name, fn) {
+      try { fn(); results.push({ name, ok: true }); }
+      catch (e) { results.push({ name, ok: false, error: e.message }); }
+    }
+    function assert(cond, msg) { if (!cond) throw new Error(msg || 'assertion failed'); }
+    function eq(a, b, msg) {
+      const sa = JSON.stringify(a), sb = JSON.stringify(b);
+      if (sa !== sb) throw new Error(`${msg || 'expected equal'}: ${sa} !== ${sb}`);
+    }
+    function playAll(state, moves) {
+      for (const i of moves) {
+        const res = L.play(state, i);
+        assert(res.ok, `move ${i} rejected: ${res.reason}`);
+        state = res.state;
+      }
+      return state;
+    }
+
+    test('board starts with exactly nine empty cells', () => {
+      const s = L.createGame(xFirst);
+      eq(s.board.length, 9);
+      assert(s.board.every((c) => c === null));
+      eq(s.status, 'playing');
+    });
+
+    test('lots decide the first player', () => {
+      eq(L.createGame(xFirst).current, 'X');
+      eq(L.createGame(oFirst).current, 'O');
+    });
+
+    test('a valid move fills exactly one cell', () => {
+      const s = L.play(L.createGame(xFirst), 4).state;
+      eq(s.board.filter((c) => c !== null).length, 1);
+      eq(s.board[4], 'X');
+    });
+
+    test('a second click on the same cell changes nothing', () => {
+      const s = L.play(L.createGame(xFirst), 4).state;
+      const res = L.play(s, 4);
+      assert(!res.ok);
+      eq(res.reason, 'occupied');
+      assert(res.state === s, 'state must be untouched');
+    });
+
+    test('players alternate after each valid move', () => {
+      let s = L.createGame(xFirst);
+      s = L.play(s, 0).state; eq(s.current, 'O');
+      s = L.play(s, 1).state; eq(s.current, 'X');
+    });
+
+    test('playing out of turn changes nothing', () => {
+      const s = L.createGame(xFirst);
+      const res = L.play(s, 0, 'O');
+      assert(!res.ok);
+      eq(res.reason, 'not-your-turn');
+      assert(res.state === s);
+    });
+
+    L.LINES.forEach((line) => {
+      test(`line ${line.join('-')} is a win`, () => {
+        const others = [0, 1, 2, 3, 4, 5, 6, 7, 8].filter((i) => !line.includes(i));
+        const s = playAll(L.createGame(xFirst), [line[0], others[0], line[1], others[1], line[2]]);
+        eq(s.status, 'won');
+        eq(s.winner, 'X');
+        eq(s.winLine, line);
+        eq(s.scores, { X: 1, O: 0, draws: 0 });
+      });
+    });
+
+    test('a ninth-move win is not reported as a draw', () => {
+      const s = playAll(L.createGame(xFirst), [0, 1, 2, 3, 4, 5, 7, 6, 8]);
+      eq(s.moves, 9);
+      eq(s.status, 'won');
+      eq(s.winner, 'X');
+      eq(s.scores.draws, 0);
+    });
+
+    test('a full board without a line is a draw', () => {
+      const s = playAll(L.createGame(xFirst), [0, 2, 1, 3, 5, 4, 6, 7, 8]);
+      eq(s.status, 'draw');
+      eq(s.winner, null);
+      eq(s.scores, { X: 0, O: 0, draws: 1 });
+    });
+
+    test('moves are blocked after the round ends and points are awarded once', () => {
+      const s = playAll(L.createGame(xFirst), [0, 3, 1, 4, 2]);
+      const res = L.play(s, 8);
+      assert(!res.ok);
+      eq(res.reason, 'round-over');
+      assert(res.state === s);
+      eq(s.scores.X, 1);
+    });
+
+    test('a new round keeps scores and alternates the first player', () => {
+      const won = playAll(L.createGame(xFirst), [0, 3, 1, 4, 2]);
+      const next = L.newRound(won);
+      assert(next.board.every((c) => c === null));
+      eq(next.scores, { X: 1, O: 0, draws: 0 });
+      eq(next.current, 'O');
+      eq(next.round, 2);
+      eq(L.newRound(next).current, 'X');
+    });
+
+    test('the first player alternates even after a draw', () => {
+      const drawn = playAll(L.createGame(xFirst), [0, 2, 1, 3, 5, 4, 6, 7, 8]);
+      eq(L.newRound(drawn).current, 'O');
+    });
+
+    test('alternation follows the round starter, not the last mover', () => {
+      // O ends the round, but X started it, so O starts the next one.
+      const s = playAll(L.createGame(xFirst), [8, 0, 7, 1, 3, 2]);
+      eq(s.winner, 'O');
+      eq(L.newRound(s).current, 'O');
+    });
+
+    test('reset zeroes scores and draws lots again', () => {
+      const won = playAll(L.createGame(xFirst), [0, 3, 1, 4, 2]);
+      const fresh = L.resetGame(oFirst);
+      eq(fresh.scores, { X: 0, O: 0, draws: 0 });
+      eq(fresh.current, 'O');
+      eq(fresh.round, 1);
+      assert(won.scores.X === 1, 'previous state must be untouched');
+    });
+
+    test('a round is in progress only once a seal has been placed', () => {
+      const s = L.createGame(xFirst);
+      assert(!L.isRoundInProgress(s));
+      assert(L.isRoundInProgress(L.play(s, 0).state));
+      assert(!L.isRoundInProgress(playAll(s, [0, 3, 1, 4, 2])));
+    });
+
+    // ---- Computer opponent ----
+
+    function seeded(seed) {
+      let a = seed >>> 0;
+      return () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; };
+    }
+
+    ['easy', 'normal', 'hard'].forEach((level) => {
+      test(`${level} computer always picks an empty cell`, () => {
+        const rng = seeded(level.length);
+        for (let g = 0; g < 30; g++) {
+          let s = L.createGame(rng);
+          while (s.status === 'playing') {
+            const i = L.aiMove(s.board, s.current, level, rng);
+            assert(s.board[i] === null, `cell ${i} is not empty`);
+            s = L.play(s, i).state;
+          }
+        }
+      });
+    });
+
+    test('hard and normal computers take an immediate win', () => {
+      // X X . / O O . / . . .  — X to move must play 2.
+      const board = ['X', 'X', null, 'O', 'O', null, null, null, null];
+      eq(L.aiMove(board, 'X', 'hard'), 2);
+      eq(L.aiMove(board, 'X', 'normal'), 2);
+    });
+
+    test('hard and normal computers block an immediate threat', () => {
+      // O O . / X . . / . . X  — X to move has no win and must block O at 2.
+      const board = ['O', 'O', null, 'X', null, null, null, null, 'X'];
+      eq(L.aiMove(board, 'X', 'hard'), 2);
+      eq(L.aiMove(board, 'X', 'normal'), 2);
+    });
+
+    test('hard computer never loses against random play', () => {
+      const rng = seeded(7);
+      for (let g = 0; g < 150; g++) {
+        let s = L.createGame(rng);
+        while (s.status === 'playing') {
+          const i = s.current === 'O'
+            ? L.aiMove(s.board, 'O', 'hard', rng)
+            : L.aiMove(s.board, 'X', 'easy', rng);
+          s = L.play(s, i).state;
+        }
+        assert(s.winner !== 'X', `hard computer lost game ${g}: ${s.board.join('')}`);
+      }
+    });
+
+    test('two hard computers always draw', () => {
+      const rng = seeded(3);
+      for (let g = 0; g < 20; g++) {
+        let s = L.createGame(rng);
+        while (s.status === 'playing') s = L.play(s, L.aiMove(s.board, s.current, 'hard', rng)).state;
+        eq(s.status, 'draw');
+      }
+    });
+
+    const list = document.getElementById('results');
+    for (const r of results) {
+      const li = document.createElement('li');
+      li.className = r.ok ? 'pass' : 'fail';
+      li.textContent = r.name + (r.ok ? '' : ` — ${r.error}`);
+      list.appendChild(li);
+    }
+    const failed = results.filter((r) => !r.ok).length;
+    const summary = document.getElementById('summary');
+    summary.textContent = failed ? `${failed} of ${results.length} tests failed` : `All ${results.length} tests passed`;
+    summary.className = failed ? 'ko' : 'ok';
+    document.title = summary.textContent;
+  </script>
+</body>
+</html>

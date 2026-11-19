@@ -1,0 +1,37 @@
+# --- Build (APK, sons WAV et icônes générés) ---
+build/
+*.apk
+*.apk.idsig
+*.aab
+*.dex
+*.ap_
+*.flat
+
+# --- Clé de signature Android (à conserver, mais jamais versionnée) ---
+*.keystore
+*.jks
+
+# --- Caches et fichiers temporaires locaux ---
+.cache/
+.qa_tmp/
+__pycache__/
+*.py[cod]
+*.log
+*.tmp
+
+# --- Éditeurs / IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- Systèmes d'exploitation ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Secrets et réglages locaux ---
+.env
+.env.*
+.claude/settings.local.json

@@ -1,0 +1,24 @@
+<!doctype html><meta charset="utf-8">
+<!-- Artwork of the Android launcher icon: the two seals of js/art.js on paper. scripts/build-apk.sh
+     screenshots it at 1024×1024: the whole page is the 108 dp adaptive-icon layer, so the seals must stay
+     inside its 66 dp safe circle (radius 0.3 × the width). -->
+<style>
+  html, body { margin: 0; width: 1024px; height: 1024px; overflow: hidden; background: #f2e8d4; }
+  .seal { position: absolute; display: block; filter: drop-shadow(0 14px 18px rgba(60, 40, 15, .35)); }
+  #x { width: 340px; height: 340px; left: 292px; top: 292px; transform: rotate(-7deg); }
+  #o { width: 280px; height: 280px; left: 452px; top: 452px; transform: rotate(6deg); }
+</style>
+<body>
+<script src="../js/art.js"></script>
+<script>
+  const A = window.TwoDragonsArt;
+  A.injectDefs();
+  document.body.style.backgroundImage = `url(${A.paperTexture(320, 11)})`;
+  for (const [id, side, seed] of [['x', 'X', 7], ['o', 'O', 12]]) {
+    const div = document.createElement('div');
+    div.innerHTML = A.seal(side, { seed, motifOpacity: 0.22 });
+    const svg = div.firstElementChild;
+    svg.id = id;
+    document.body.append(svg);
+  }
+</script>
